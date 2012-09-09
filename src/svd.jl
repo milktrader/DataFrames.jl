@@ -9,9 +9,10 @@
 
 # Calculate the rank-k SVD approximation to a matrix given the
 # full SVD.
-function approximate(u, d, v, k::Int64)
-  u[:, 1:k] * diagm(d[1:k]) * v[1:k, :]
-end
+approximate(u::Array{Float64},
+            d::Array{Float64},
+            v::Array{Float64},
+            k::Int64) = u[:, 1:k] * diagm(d[1:k]) * v[1:k, :]
 
 # Test code:
 #
@@ -23,11 +24,16 @@ end
 # norm(approximate(u, d, v, 3) - M)
 
 # Impute a missing entries using current approximation.
-function impute(m::Matrix{Float64}, missing_entries, u, d, v, k::Int64)
+function impute(m::Matrix{Float64},
+                missing_entries::Array{Any},
+                u::Array{Float64},
+                d::Array{Float64},
+                v::Array{Float64},
+                k::Int64)
   approximate_m = approximate(u, d, v, k)
 
-  for index_pair in missing_entries
-    m[index_pair[1], index_pair[2]] = approximate_m[index_pair[1], index_pair[2]]
+  for indices in missing_entries
+    m[indices[1], indices[2]] = approximate_m[indices[1], indices[2]]
   end
 
   m
@@ -46,7 +52,7 @@ function ind_na(df::DataFrame)
   indices
 end
 
-# Kind of a nutty method without DataMatrix.
+# Kind of a nutty method without constraint that we're using a DataMatrix.
 function mean(df::DataFrame)
   mu = 0.0
   n = 0
@@ -61,9 +67,9 @@ function mean(df::DataFrame)
   mu / n
 end
 
-# This will crash if a row is missing all entries.
+# Calculate the mean of each row in a DataFrame.
 function row_means(df::DataFrame)
-  mus = zeros(nrow(df))
+  means = zeros(nrow(df))
   for i = 1:nrow(df)
     mu = 0.0
     n = 0
@@ -73,30 +79,57 @@ function row_means(df::DataFrame)
         n += 1
       end
     end
-    mus[i] = mu / n
+    if n == 0
+      error("Row $i has all NA entries")
+    end
+    means[i] = mu / n
   end
-  mus
+  means
 end
 
-# Must select rank k of SVD to use.
+# Calculate the mean of each column in a DataFrame.
+function col_means(df::DataFrame)
+  means = zeros(ncol(df))
+  for j = 1:ncol(df)
+    mu = 0.0
+    n = 0
+    for i = 1:nrow(df)
+      if !isna(df[i, j])
+        mu += df[i, j]
+        n += 1
+      end
+    end
+    if n == 0
+      error("Column $j has all NA entries")
+    end
+    means[j] = mu / n
+  end
+  means
+end
+
+# Uses a fixed point algorithm to calculate the SVD of a DataFrame
+# that may be missing entries. Should really be defined on a 
+# DataMatrix type, not a DataFrame type.
 function missing_svd(D::DataFrame, k::Int)
+  # Don't edit the original DataFrame.
   df = copy(D)
 
+  # Select a tolerance before diagnosing convergence.
   tolerance = 10e-4
 
-  # Cache the dimensions of the matrix.
+  # Store the dimensions of the matrix in variables.
   n = size(df, 1)
   p = size(df, 2)
 
-  # Estimate missingness and print a message.
+  # Estimate the missingness of the DataFrame and print a message.
   missing_entries = ind_na(df)
-  missingness = length(missing_entries) / (nrow(df) * ncol(df))
+  missingness = length(missing_entries) / (n * p)
   println("Matrix is missing $(missingness * 100)% of entries")
 
-  # Initial imputation uses row means.
+  # Initial imputation uses row means where possible and the global
+  # mean otherwise.
   global_mu = mean(df)
   mu_i = row_means(df)
-
   for i = 1:n
     for j = 1:p
       if isna(df[i, j])
@@ -109,37 +142,40 @@ function missing_svd(D::DataFrame, k::Int)
     end
   end
 
-  # Make a matrix out of the dataframe.
+  # Now we make a Float64 matrix out of the fully filled-in DataFrame.
   tmp = zeros(n, p)
   for i = 1:n
     for j = 1:p
       tmp[i, j] = df[i, j]
     end
   end
-  df = tmp
 
   # Count iterations of proper imputation method.
   i = 0
 
   # Keep track of approximate matrices.
-  previous_df = copy(df)
-  current_df = copy(df)
+  previous_m = tmp
+  current_m = copy(previous_m)
 
   # Keep track of Frobenius norm of changes in imputed matrix.
   change = Inf
 
-  # Iterate until imputation stops changing up to a tolerance of 10e-6.
+  # Iterate until imputation stops changing up to chosen tolerance.
   while change > tolerance
-    println("Iteration $i")
-    println("Change $change")
+    # Print out status of algorithm for monitoring convergence.
+    println("Iteration: $i")
+    println("Change in Frobenius Norm: $change")
 
-    # Impute missing entries using current SVD.
-    previous_df = copy(current_df)
-    u, d, v = svd(current_df)
-    current_df = impute(current_df, missing_entries, u, d, v, k)
-    
+    # Make copies of matrices.
+    previous_m = current_m
+    current_m = copy(current_m)
+
+    # Re-impute missing entries using the SVD of the current impuation.
+    u, d, v = svd(current_m)
+    current_m = impute(current_m, missing_entries, u, d, v, k)
+
     # Compute the change in the matrix across iterations.
-    change = norm(previous_df - current_df) / norm(df)
+    change = norm(previous_m - current_m) / norm(tmp)
 
     # Increment the iteration counter.
     i = i + 1
@@ -147,8 +183,9 @@ function missing_svd(D::DataFrame, k::Int)
 
   # Tell the user how many iterations were required to impute matrix.
   println("Tolerance achieved after $i iterations")
-  
+
   # Return both df and the SVD of df with all entries imputed.
-  u, d, v = svd(current_df)
-  (current_df, u[:, 1:k], d[1:k], v[1:k, :])
+  # Need to check that v is being used correctly.
+  u, d, v = svd(current_m)
+  (current_m, u[:, 1:k], d[1:k], v[1:k, :])
 end
