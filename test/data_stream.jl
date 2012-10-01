@@ -34,4 +34,20 @@ cds.metadata.types = {String, String, String, Float64, Float64}
 
 @elapsed mean(cds)
 
+#
+# Variance and Range
+#
+
+cds = CSVDataStream("test/data/big_data.csv")
+
+cds.metadata.column_names = ["A", "B", "C", "D", "E"]
+cds.metadata.types = {String, String, String, Float64, Float64}
+
+mean(cds)
+var(cds)
+range(cds)
+# cov(cds)
+# cor(cds)
+# entropy(cds)
+
 file_remove("test/data/big_data.csv")

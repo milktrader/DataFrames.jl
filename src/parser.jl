@@ -8,7 +8,7 @@ function DataFrame(n::Int64, p::Int64)
   names = Array(ByteString, p)
   for j in 1:p
     names[j] = "x$(j)"
-    columns[j] = DataVec(Array(Int64, n), Array(Bool, n))
+    columns[j] = DataVec(Array(Float64, n), Array(Bool, n))
     for i in 1:n
       columns[j][i] = NA
     end

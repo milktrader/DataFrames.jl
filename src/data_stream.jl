@@ -49,7 +49,7 @@ function done(cds::CSVDataStream, line::String)
 end
 
 # TODO: Don't go past end of stream.
-function ref(cds::CSVDataStream, ind::Int64)
+function ref(cds::DataStream, ind::Int64)
   i = 1
   line = start(cds)
   row = DataFrame()
@@ -64,7 +64,7 @@ end
 # Functions
 #
 
-function colmeans(cds::CSVDataStream)
+function colmeans(cds::DataStream)
   n = length(cds.metadata.types)
   is_numeric = map(t -> t <: Number, cds.metadata.types)
   sums = DataVec(zeros(n))
@@ -95,5 +95,88 @@ function colmeans(cds::CSVDataStream)
   df
 end
 
-mean(cds::CSVDataStream) = colmeans(cds)
+mean(cds::DataStream) = colmeans(cds)
 
+function var(cds::DataStream)
+  p = length(cds.metadata.types)
+  is_numeric = map(t -> t <: Number, cds.metadata.types)
+
+  n = zeros(Int64, p)
+  means = zeros(Float64, p)
+  m2 = zeros(Float64, p)
+  variances = zeros(Float64,p)
+
+  for row in cds
+    for j in 1:p
+      if is_numeric[j] & !isna(row[1, j])
+        n[j] += 1
+        delta = row[1, j] - means[j]
+        means[j] += delta / n[j]
+        m2[j] += delta * (row[1, j] - means[j])
+        variances[j] = m2[j] / (n[j] - 1)
+      end
+    end
+  end
+
+  df = DataFrame(1, p)
+  names!(df, cds.metadata.column_names)
+
+  for j = 1:p
+    if !is_numeric[j]
+      df[1, j] = NA
+    else
+      df[1, j] = variances[j]
+    end
+  end
+
+  return df
+end
+
+function range(cds::DataStream)
+  p = length(cds.metadata.types)
+  is_numeric = map(t -> t <: Number, cds.metadata.types)
+
+  mins = zeros(p) # Set to Inf
+  maxs = zeros(p) # Set to -Inf
+
+  for j in 1:p
+    mins[j] = Inf
+    maxs[j] = -Inf
+  end
+
+  for row in cds
+    for j in 1:p
+      if is_numeric[j] & !isna(row[1, j])
+        if row[1, j] < mins[j]
+          mins[j] = row[1, j]
+        end
+        if row[1, j] > maxs[j]
+          maxs[j] = row[1, j]
+        end
+      end
+    end
+  end
+
+  df = DataFrame(2, p)
+  names!(df, cds.metadata.column_names)
+
+  for j = 1:p
+    if !is_numeric[j]
+      df[1, j] = NA
+      df[2, j] = NA
+    else
+      df[1, j] = mins[j]
+      df[2, j] = maxs[j]
+    end
+  end
+
+  return cbind(DataFrame(:(Type = ["Min", "Max"])), df)
+end
+
+# cov(cds): Returns a PxP matrix
+# cor(cds): Returns a PxP matrix
+# entropy(cds): Returns a 1xP DataFrame
+# lm(cds, Formula)
+# glm(cds, Formula)
+# k_means(cds, Formula)
+# svm(cds, Formula)
