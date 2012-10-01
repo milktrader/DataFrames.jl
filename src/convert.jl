@@ -1,5 +1,5 @@
 type DataFrameMetaData
-  column_names::Vector{String}
+  column_names::Vector{ASCIIString}
   types::Array
   #types::Vector{Union(BitsKind,CompositeKind,AbstractKind)}
   #types::Array{Type}

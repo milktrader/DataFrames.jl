@@ -9,8 +9,8 @@ load("src/parser.jl")
 delimiter = ','
 quote_character = '"'
 
-column_names = Array(String, 0)
-types = {String, String, String, Float64, Int64}
+column_names = Array(ASCIIString, 0)
+types = {ASCIIString, ASCIIString, ASCIIString, Float64, Int64}
 
 md = DataFrameMetaData(column_names, types)
 
@@ -43,6 +43,15 @@ df_final = parse_delimited_file("test/data/complex_data.csv", delimiter, quote_c
 #@assert df_final == true_df
 @assert names(df_final) != names(true_df)
 
+df = DataFrame(10, 5)
+
+column_names = Array(ASCIIString, 0)
+types = {ASCIIString, ASCIIString, ASCIIString, Float64, Int64}
+
+md = DataFrameMetaData(column_names, types)
+
+df = DataFrame(10, md)
+
 ###############################################################
 #
 # TIMING TESTS
@@ -54,10 +63,24 @@ df_final = parse_delimited_file("test/data/complex_data.csv", delimiter, quote_c
 end
 
 # Run to force JIT'ing
+df_final = alt_parse_delimited_file("test/data/simple_data.csv", delimiter, quote_character, md)
+
+@elapsed for i = 1:1_000
+  df_final = alt_parse_delimited_file("test/data/simple_data.csv", delimiter, quote_character, md)
+end
+
+# Run to force JIT'ing
 df_final = csvDataFrame("test/data/simple_data.csv")
 
 @elapsed for i = 1:1_000
   df_final = csvDataFrame("test/data/simple_data.csv")
+end
+
+# Run to force JIT'ing
+df_final = alt2_parse_delimited_file("test/data/simple_data.csv", 2, delimiter, quote_character, md)
+
+@elapsed for i = 1:1_000
+  df_final = alt2_parse_delimited_file("test/data/simple_data.csv", 2, delimiter, quote_character, md)
 end
 
 # Does this depend on the number of columns?
