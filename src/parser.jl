@@ -59,10 +59,11 @@ function parse_delimited_line{T <: String}(line::T, delimiter::Char, quote_chara
     error("Missingness information is corrupt")
   end
 
-  df = DataFrame()
+  cols = {}
   for i in 1:n
-    df = cbind(df, DataFrame(DataVec([results[i]], [is_missing[i]])))
+    push(cols, DataVec([results[i]], [is_missing[i]]))
   end
+  df = DataFrame(cols)
 
   if length(md.column_names) != ncol(df)
     colnames!(df, [strcat("x", i) for i in 1:ncol(df)])
